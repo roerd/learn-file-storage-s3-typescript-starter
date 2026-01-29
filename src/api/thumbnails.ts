@@ -10,33 +10,7 @@ type Thumbnail = {
   mediaType: string;
 };
 
-const videoThumbnails: Map<string, Thumbnail> = new Map();
-
 const MAX_UPLOAD_SIZE = 10 << 20; // 10 MB
-
-export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  const { videoId } = req.params as { videoId?: string };
-  if (!videoId) {
-    throw new BadRequestError("Invalid video ID");
-  }
-
-  const video = getVideo(cfg.db, videoId);
-  if (!video) {
-    throw new NotFoundError("Couldn't find video");
-  }
-
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
-  }
-
-  return new Response(thumbnail.data, {
-    headers: {
-      "Content-Type": thumbnail.mediaType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -59,7 +33,11 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   }
   const mediaType = file.type;
 
-  const data = await file.arrayBuffer();
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const base64 = buffer.toString("base64");
+  const dataUrl = `data:${mediaType};base64,${base64}`;
+
   const video = getVideo(cfg.db, videoId);
   if (!video) {
     throw new NotFoundError("Couldn't find video in the database");
@@ -67,10 +45,8 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   if (video.userID !== userID) {
     throw new UserForbiddenError("You do not have permission to modify this video");
   }
-  videoThumbnails.set(videoId, { data, mediaType });
 
-  const url = `http://localhost:8091/api/thumbnails/${videoId}`;
-  video.thumbnailURL = url;
+  video.thumbnailURL = dataUrl;
   updateVideo(cfg.db, video);
 
   return respondWithJSON(200, video);
