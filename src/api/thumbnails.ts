@@ -5,6 +5,7 @@ import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import path from "path";
+import { randomBytes } from "crypto";
 
 type Thumbnail = {
   data: ArrayBuffer;
@@ -38,8 +39,9 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Unsupported thumbnail file type");
   }
   const fileExtension = mediaType.split("/")[1];
-  const filePath = path.join(cfg.assetsRoot, `${videoId}.${fileExtension}`);
-
+  const randomBytesBuffer = randomBytes(32);
+  const baseFileName = randomBytesBuffer.toString("base64url");
+  const filePath = path.join(cfg.assetsRoot, `${baseFileName}.${fileExtension}`);
 
   const fileData = await file.arrayBuffer();
   Bun.write(filePath, fileData);
@@ -52,7 +54,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new UserForbiddenError("You do not have permission to modify this video");
   }
 
-  const url = `http://localhost:8091/assets/${videoId}.${fileExtension}`;
+  const url = `http://localhost:8091/assets/${baseFileName}.${fileExtension}`;
   video.thumbnailURL = url;
   updateVideo(cfg.db, video);
 
