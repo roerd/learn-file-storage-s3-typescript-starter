@@ -60,3 +60,31 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
   return respondWithJSON(200, null);
 }
+
+export async function getVideoAspectRatio(filePath: string): Promise<string> {
+  const proc = await Bun.spawn({
+    cmd: ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const stdoutText = await new Response(proc.stdout).text();
+  const stderrText = await new Response(proc.stderr).text();
+
+  if (await proc.exited !== 0) {
+    console.error("ffprobe error:", stderrText);
+    throw new Error("Failed to get video metadata");
+  }
+
+  const metadata = JSON.parse(stdoutText);
+  const width = metadata.streams[0].width;
+  const height = metadata.streams[0].height;
+  
+  if (width > height) {
+    return "landscape";
+  } else if (height > width) {
+    return "portrait";
+  } else {
+    return "other";
+  }
+}
