@@ -44,7 +44,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const filePath = path.join(cfg.assetsRoot, `${baseFileName}.${fileExtension}`);
 
   const fileData = await file.arrayBuffer();
-  Bun.write(filePath, fileData);
+  await Bun.write(filePath, fileData);
 
   const video = getVideo(cfg.db, videoId);
   if (!video) {
