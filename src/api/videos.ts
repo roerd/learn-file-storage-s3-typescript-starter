@@ -3,7 +3,7 @@ import { type ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { getBearerToken, validateJWT } from "../auth";
-import { getVideo, updateVideo } from "../db/videos";
+import { getVideo, getVideos, updateVideo, type Video } from "../db/videos";
 import { randomBytes } from "crypto";
 
 const MAX_UPLOAD_SIZE = 1 << 30; // 1 GB
@@ -58,8 +58,8 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   await cfg.s3Client.file(s3Key).write(fileContent, {type: mediaType});
   await Bun.file(processedFilePath).delete();
   
-  const url = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${s3Key}`;
-  video.videoURL = url;
+  // const url = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${s3Key}`;
+  video.videoURL = s3Key;
   updateVideo(cfg.db, video);
 
   return respondWithJSON(200, null);
@@ -110,4 +110,45 @@ async function processVideoForFastStart(inputFilePath: string): Promise<string> 
   }
 
   return outputFilePath;
+}
+
+async function generatePresignedURL(cfg: ApiConfig, key: string, expireTime: number): Promise<string> {
+  const url = await cfg.s3Client.presign(key, {
+    expiresIn: expireTime,
+  });
+  return url;
+}
+
+async function dbVideoToSignedVideo(cfg: ApiConfig, video: Video): Promise<Video> {
+  if (!video.videoURL) {
+    return video;
+  }
+  video.videoURL = await generatePresignedURL(cfg, video.videoURL, 3600);
+  return video;
+}
+
+export async function handlerVideoGet(cfg: ApiConfig, req: BunRequest) {
+  const { videoId } = req.params as { videoId?: string };
+  if (!videoId) {
+    throw new BadRequestError("Invalid video ID");
+  }
+
+  let video = getVideo(cfg.db, videoId);
+  if (!video) {
+    throw new NotFoundError("Couldn't find video");
+  }
+  video = await dbVideoToSignedVideo(cfg, video);
+
+  return respondWithJSON(200, video);
+}
+
+export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
+  const token = getBearerToken(req.headers);
+  const userID = validateJWT(token, cfg.jwtSecret);
+
+  let videos = getVideos(cfg.db, userID);
+
+  videos = await Promise.all(videos.map(video => dbVideoToSignedVideo(cfg, video)));
+
+  return respondWithJSON(200, videos);
 }

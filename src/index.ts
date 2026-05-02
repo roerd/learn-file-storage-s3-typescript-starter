@@ -7,12 +7,14 @@ import {
 } from "./api/middleware";
 import { handlerUsersCreate } from "./api/users";
 import {
-  handlerVideoGet,
   handlerVideoMetaCreate,
   handlerVideoMetaDelete,
-  handlerVideosRetrieve,
 } from "./api/video-meta";
-import { handlerUploadVideo } from "./api/videos";
+import {
+  handlerUploadVideo,
+  handlerVideoGet,
+  handlerVideosRetrieve,
+} from "./api/videos";
 import { handlerUploadThumbnail } from "./api/thumbnails";
 import { handlerReset } from "./api/reset";
 import { ensureAssetsDir } from "./api/assets";
