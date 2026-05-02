@@ -45,16 +45,18 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const temporaryFilePath = `/tmp/${videoId}.mp4`;
   await Bun.write(temporaryFilePath, arrayBuffer);
 
-  const aspectRatio = await getVideoAspectRatio(temporaryFilePath);
+  const processedFilePath = await processVideoForFastStart(temporaryFilePath);
+  await Bun.file(temporaryFilePath).delete();
+
+  const aspectRatio = await getVideoAspectRatio(processedFilePath);
 
   const randomBytesBuffer = randomBytes(32);
   const baseFileName = randomBytesBuffer.toString("base64url");
   const s3Key = `${aspectRatio}/${baseFileName}.mp4`;
-  const fileContent = Bun.file(temporaryFilePath);
+  const fileContent = Bun.file(processedFilePath);
   
   await cfg.s3Client.file(s3Key).write(fileContent, {type: mediaType});
-
-  await Bun.file(temporaryFilePath).delete();
+  await Bun.file(processedFilePath).delete();
   
   const url = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${s3Key}`;
   video.videoURL = url;
@@ -89,4 +91,23 @@ export async function getVideoAspectRatio(filePath: string): Promise<string> {
   } else {
     return "other";
   }
+}
+
+async function processVideoForFastStart(inputFilePath: string): Promise<string> {
+  const outputFilePath = inputFilePath.replace(".mp4", "_faststart.mp4");
+  
+  const proc = await Bun.spawn({
+    cmd: ["ffmpeg", "-i", inputFilePath, "-movflags", "faststart", "-map_metadata", "0", "-codec", "copy", "-f", "mp4", outputFilePath],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const stderrText = await new Response(proc.stderr).text();
+
+  if (await proc.exited !== 0) {
+    console.error("ffmpeg error:", stderrText);
+    throw new Error("Failed to process video for fast start");
+  }
+
+  return outputFilePath;
 }
